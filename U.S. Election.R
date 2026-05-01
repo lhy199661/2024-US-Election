@@ -499,15 +499,18 @@ c<-read.csv("2020USElection.csv",header = T)
 b<-read.csv("2024USElection.csv",header = T)
 # Y is sum of implied probabilities of two candidates.
 # For 2020 data,
-Y<c$Total
-# For 2024 data Y<-b$Prob
+#Y<-c$Total
+# For 2024 data 
+Y<-b$Prob
 
 set.seed(123)
 n <- length(Y)
 # Set the training size: 10000, based on the length of the whole data.
 train_size <- 10000
+
 # Run the output,
-monitor_result <- online_monitoring_system(Y, train_size)
+monitor_result <- bootstrap_forecast_calibrated(Y, train_size=10000)
+
 # Try to find the last changeable time.
 find_first_changes <- function(time_vec, Z_vec) {
   if (length(Z_vec) == 0) return(data.frame(time = numeric(0), Z = numeric(0)))
@@ -516,10 +519,12 @@ find_first_changes <- function(time_vec, Z_vec) {
 }
 l<-monitor_result$results
 l_true <- l[l$Viol_cal == TRUE, ]
-#Find the singal trading points filtered.
+
+#Find the signal trading points filtered.
 change_points <- find_first_changes(l_true$time, l_true$Z)
 filtered <- change_points$time
 filtered<-na.omit(filtered)
+
 #For smoothing part of mu.
 fit_mu_online <- function(Z, k = 15, verbose = FALSE) {
   n <- length(Z)
@@ -529,7 +534,6 @@ fit_mu_online <- function(Z, k = 15, verbose = FALSE) {
   for (t in seq(2, n)) {
     tt <- 1:t
     k_use <- min(k, max(3, t - 1))
-    
     if (length(unique(tt)) < 3) {
       mu_history[[t]] <- rep(mean(Z[1:t]), t)
       mu_next[t] <- mean(Z[1:t])
@@ -540,14 +544,14 @@ fit_mu_online <- function(Z, k = 15, verbose = FALSE) {
         gam(Z[1:t] ~ s(tt, bs = "cs", k = k_use)),
         error = function(e) NULL
       )
-    })-
-      if (is.null(fit_t)) {
-        mu_hat_t <- rep(mean(Z[1:t]), t)
-        mu_next[t] <- mean(Z[1:t])
-      } else {
-        mu_hat_t <- as.numeric(predict(fit_t))
-        mu_next[t] <- as.numeric(predict(fit_t, newdata = data.frame(tt = t + 1)))
-      }
+    })
+    if (is.null(fit_t)) {
+      mu_hat_t <- rep(mean(Z[1:t]), t)
+      mu_next[t] <- mean(Z[1:t])
+    } else {
+      mu_hat_t <- as.numeric(predict(fit_t))
+      mu_next[t] <- as.numeric(predict(fit_t, newdata = data.frame(tt = t + 1)))
+    }
     
     mu_history[[t]] <- mu_hat_t
     
@@ -560,8 +564,23 @@ fit_mu_online <- function(Z, k = 15, verbose = FALSE) {
 }
 res <- fit_mu_online(Y, k = 15, verbose = TRUE)
 r<-unlist(lapply(res$mu_history, function(x) tail(x, 1)))
+
+#Gam for all training data.
+fit_mu_all <- function(Z, k = 15) {
+  df <- data.frame(Z=Z, t=seq_along(Z))
+  gam(Z ~ s(t, bs="cs", k=min(k, max(3, nrow(df)-1))), data=df)
+}
+t<-as.numeric(predict(fit_mu_all(Y[1:10000])))
 r[1:10000]<-t
 r<-c(r,NA) # exclude the training size.
+
+Sys.setlocale("LC_TIME", "English")
+time <- as.POSIXct(b$timestampLON,
+                   format="%Y/%m/%d %H:%M")
+#If we deal with 2020 dataset, we should exclude the Covid period.
+# time<-append(time,rep(NA,1079),after=11593)
+# Y<-append(Y,rep(NA,1079),after=11593)
+# monitor_result$upper<-append(monitor_result$upper,rep(NA,1079),after=11593)
 
 df <- data.frame(
   time = time,
@@ -576,34 +595,34 @@ df_filtered <- data.frame(
   Y = Y[filtered]
 )
 #Draw the plot
-Sys.setlocale("LC_TIME", "English")
-time <- as.POSIXct(b$timestampLON,
-                   format="%Y/%m/%d %H:%M")
-q <- ggplot() +
-  geom_line(data = df_Yp, aes(x = time, y = Y_p), color = "gray60") +
-  geom_line(data = df_covid, aes(x = time, y = covid), color = "green3") +
-  
-  geom_line(data = df_Ul, aes(x = time, y = Ul), color = "red") +
-  
+p <- ggplot(df, aes(x = time)) +
+  geom_line(aes(y = Y), color = "gray60") +
+  geom_line(aes(y = Upper), color = "red", linewidth = 0.7) +
+  geom_line(aes(y = r), color = "green3", linewidth = 0.7) +
   geom_point(
-    data = df_points,
-    aes(x = time, y = Y_t),
-    shape = 4, color = "blue", size = 1
+    data = df_filtered,
+    aes(y = Y),
+    shape = 4,         
+    color = "blue",    
+    size = 0.8 * 2.5   
   ) +
+  
   geom_vline(
-    xintercept = time3[train_size],
+    xintercept = time[train_size],
     color = "magenta",
     linetype = "dashed"
   ) +
-  geom_vline(xintercept = time3[11593], color = "orange", linetype = "dashed") +
-  geom_vline(xintercept = time3[12673], color = "orange", linetype = "dashed") +
   
-  theme_bw() +
-  labs(x = "Date", y = "Sum Of Probability")
+  labs(
+    x = "Date",
+    y = "Sum Of Probability"
+  ) +
+  theme_bw()
+print(p)
 
 #We find the outside prediction interval points.
-generate_stat_report(monitor_result$params_history)
 filtered <- na.omit(change_points$time)
+
 #Which Bet to place, Using 2020 data to build the Bradley–Terry Model, we have two candidates Trump and Biden from two parties.
 Trump<-as.numeric(na.omit(c$probTrump))
 Biden<-as.numeric(na.omit(c$probBiden))
@@ -620,6 +639,7 @@ get_last_change_index <- function(x, targets) {
     return(max(prev_idx))
   })
 }
+
 # We need to find the trading points filtered1.
 find_next_change <- function(x, pos) {
   start_val <- x[pos]
@@ -630,13 +650,17 @@ find_next_change <- function(x, pos) {
     return(pos + idx)  
   }
 }
+
 # Filtered is the signal points and fitered1 is the trading points. 
 filtered1<-sapply(filtered, function(p) find_next_change(Y, p))
+
+#We use the same methods for 2020 dataset which exclude the Covid time(points: 11593 to 12673).
 #For Trump we have three points, outside points (predicted points), one point ahead outside points and the nearest changeable points.
 last_change_indices <- get_last_change_index(Trump, filtered)
 T1<-Trump[filtered1]
 T2<-Trump[filtered]
 T3<-Trump[last_change_indices]
+
 #For Biden we have the same three points.
 last_change_indices <- get_last_change_index(Biden, filtered)
 B1<-Biden[filtered1]
@@ -654,6 +678,7 @@ feats <- data.frame(
   DeltaBiden1 = DeltaBiden1,
   B2 = B2
 )
+
 # Give the lable whether to place bet on Trump or Biden.
 utility_1<-1/T1-1/T2
 utility_2<-1/B1-1/B2
@@ -669,9 +694,11 @@ bt_data <- data.frame(
   Trump = feats$label,
   Biden = 1 - feats$label
 )
+
 # Fit Bradley–Terry logistic model.
 bt_model <- glm(Trump ~ diff_Delta + diff_T2, data = bt_data, family = binomial())
 summary(bt_model)
+
 # Extract fitted probabilities from the Bradley–Terry model.
 probs <- predict(bt_model, type = "response")
 
@@ -729,4 +756,5 @@ calc_returns_metrics <- function(o_buy, o_sell, method = c("probability","odds")
 o_buy  <- selected_baseline
 o_sell <- selected_value
 res_odds <- calc_returns_metrics(o_buy, o_sell, method = "odds")
+
 # After that we build the reliable strategy to place the bet for US election.
