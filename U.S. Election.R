@@ -689,11 +689,15 @@ build_pairwise_data <- function(feats) {
   feats$Delta2 <- feats$T2 - feats$B2
   feats
 }
+
 pair_df <- build_pairwise_data(feats)
 bt_data <- data.frame(
   Trump = feats$label,
   Biden = 1 - feats$label
 )
+
+bt_data$diff_Delta <- feats$DeltaTrump1 - feats$DeltaBiden1
+bt_data$diff_T2 <- feats$T2 - feats$B2
 
 # Fit Bradley–Terry logistic model.
 bt_model <- glm(Trump ~ diff_Delta + diff_T2, data = bt_data, family = binomial())
