@@ -660,10 +660,15 @@ p <- ggplot(df, aes(x = time)) +
   theme_bw()
 print(p)
 
-#We find the outside prediction interval points.
+# We find the outside prediction interval points.
 filtered <- na.omit(change_points$time)
 
-#Which Bet to place, Using 2020 data to build the Bradley–Terry Model, we have two candidates Trump and Biden from two parties.
+# Calculate the prediction rate
+# change_count1 <- length(filtered)
+# change_count2 <- sum(na.omit(diff(Y[-(1:10000)])) != 0)
+# change_count1/change_count2
+
+# Which Bet to place, Using 2020 data to build the Bradley–Terry Model, we have two candidates Trump and Biden from two parties.
 Trump<-as.numeric(na.omit(c$probTrump))
 Biden<-as.numeric(na.omit(c$probBiden))
 
