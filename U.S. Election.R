@@ -505,7 +505,7 @@ b <- read.csv("2024USElection.csv",header = T)
 
 # Y is sum of implied probabilities of two candidates.
 # For 2020 data,
-#Y <- d$Total.
+# Y <- d$Total.
 
 # For 2024 data, 
 Y <- b$Prob
@@ -586,6 +586,7 @@ r <- c(r,NA) # exclude the training size.
 Sys.setlocale("LC_TIME", "English")
 time <- as.POSIXct(b$timestampLON,
                    format="%Y/%m/%d %H:%M")
+
 # If we deal with 2020 dataset, we should exclude the Covid period.
 # time <- as.POSIXct(c$timestampLON,format="%Y/%m/%d %H:%M")
 # Y <-  append(Y,rep(NA,1079),after=11593)
@@ -678,8 +679,9 @@ Trump <- as.numeric(na.omit(c$probTrump))
 Biden <- as.numeric(na.omit(c$probBiden))
 
 # For 2024 test data, we need to check the model.
-# Trump <- as.numeric(b$Donald.Trump.Prob)
-# Harris<- as.numeric(b$Kamala.Harris.Prob)
+Trump1 <- as.numeric(b$Donald.Trump.Prob)
+Harris1 <- as.numeric(b$Kamala.Harris.Prob)
+
 # According to the outside points find the nearest last changeable points.
 get_last_change_index <- function(x, targets) {
   sapply(targets, function(i) {
@@ -764,16 +766,16 @@ obs <- bt_data$Trump
 hl_test <- hoslem.test(obs, probs)
 
 # Then we use 2024 data to do the prediction, Trump data is T and Harris data is H. Before this we need to use bootstrap_forecast_calibrated(Y, train_size=10000) to find the signal points for 2024.
-last_change_indices <- get_last_change_index(Trump, filtered)
-T1 <- Trump[filtered1]
-T2 <- Trump[filtered]
-T3 <- Trump[last_change_indices]
+last_change_indices <- get_last_change_index(Trump1, filtered)
+T1 <- Trump1[filtered1]
+T2 <- Trump1[filtered]
+T3 <- Trump1[last_change_indices]
 
 #For Harris we have the same three points.
-last_change_indices <- get_last_change_index(Harris, filtered)
-H1 <- Harris[filtered1]
-H2 <- Harris[filtered]
-H3 <- Harris[last_change_indices]
+last_change_indices <- get_last_change_index(Harris1, filtered)
+H1 <- Harris1[filtered1]
+H2 <- Harris1[filtered]
+H3 <- Harris1[last_change_indices]
 
 # Build the covariates
 DeltaTrump1 <- T2-T3
@@ -827,3 +829,4 @@ o_sell <- selected_value
 res_odds <- calc_returns_metrics(o_buy, o_sell, method = "odds")
 
 # After that we build the reliable strategy to place the bet for US election.
+
