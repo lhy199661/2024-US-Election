@@ -512,7 +512,7 @@ n <- length(Y)
 # Set the training size: 10000, based on the length of the whole data.
 train_size <- 10000
 
-# Run the output,
+# Run the output
 monitor_result <- bootstrap_forecast_calibrated(Y, train_size=10000)
 
 # Try to find the last changeable time.
@@ -758,13 +758,28 @@ obs <- bt_data$Trump
 # Hosmer–Lemeshow goodness-of-fit test.
 hl_test <- hoslem.test(obs, probs)
 
-# Then we use 2024 data to do the prediction, Trump data is T and Harris data is H.
+# Then we use 2024 data to do the prediction, Trump data is T and Harris data is H. Before this we need to use bootstrap_forecast_calibrated(Y, train_size=10000) to find the signal points for 2024.
+last_change_indices <- get_last_change_index(Trump, filtered)
+T1<-Trump[filtered1]
+T2<-Trump[filtered]
+T3<-Trump[last_change_indices]
+
+#For Harris we have the same three points.
+last_change_indices <- get_last_change_index(Harris, filtered)
+H1<-Harris[filtered1]
+H2<-Harris[filtered]
+H3<-Harris[last_change_indices]
+
+# Build the covariates
+DeltaTrump1<-T2-T3
+DeltaHarris1<-H2-H3
+
 newdata <- data.frame(
   diff_Delta = DeltaTrump1-DeltaHarris1,
   diff_T2 = T2-H2
 )
 
-bt_pred <- predict(bt_model, newdata = newdata, type = "response")
+bt_pred_prob <- predict(bt_model, newdata = newdata, type = "response")
 bt_pred <- as.integer(bt_pred_prob > 0.5)
 
 # We need to check the expected return and sharpe ratio.
