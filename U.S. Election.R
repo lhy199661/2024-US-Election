@@ -12,21 +12,22 @@ library(ggplot2)
 library(ResourceSelection)
 
 # When to place bet.
-# ---------- fit smoother ----------
+# ---------- Fit smoother ----------
 # We use gam to get the smoothing M(t)
 fit_mu <- function(Z, k = 15) { 
   df <- data.frame(Z=Z, t=seq_along(Z))
   k_valid <- min(k, max(3, nrow(df)-1))
   
-  # using linear method
+  # Using linear method,
   fit <- lm(Z ~ t, data=df)
   mu_hat <- as.numeric(predict(fit))
   mu_hat <- ifelse(is.na(mu_hat), mean(Z, na.rm=T), mu_hat)
   
+  # Return the outcome
   return(list(fit=fit, mu_hat=mu_hat))
 }
 
-# ---------- Kalman filtering---------- 
+# ---------- Kalman filtering ---------- 
 log_likelihood_ou_recursive <- function(params, Z, mu_hat) {
   theta <- as.numeric(params[1])
   log_sigma2 <- as.numeric(params[2])
@@ -50,7 +51,7 @@ log_likelihood_ou_recursive <- function(params, Z, mu_hat) {
   P_prev <- sigma2 / (2*theta)
   ll <- 0
   
-  #kalman filtering
+  # Kalman filtering,
   for (t in 1:n) {
     if (t == 1) {
       Q_pred <- mu_hat[t]
@@ -72,12 +73,12 @@ log_likelihood_ou_recursive <- function(params, Z, mu_hat) {
     P_prev <- (1 - K_t) * P_pred
     P_prev <- max(P_prev, 1e-10)
   }
-  #calculate negative loglikelihood
+  # Calculate negative loglikelihood,
   ll <- ifelse(is.na(ll) | is.infinite(ll), -1e10, ll)
   return(-ll)
 }
 
-# ---------- buid the derivative of M(t) ----------
+# ---------- Buid the derivative of M(t) ----------
 num_derivative <- function(x, h=1) {
   n <- length(x)
   d <- numeric(n)
@@ -95,14 +96,14 @@ num_derivative <- function(x, h=1) {
   return(d)
 }
 
-# ---------- estimate parameters ----------
+# ---------- Estimate parameters ----------
 estimate_ou_params <- function(Z, m_hat) {
   
   n <- length(Z)
   h <- 1
   mprime <- num_derivative(m_hat, h)
   
-   # Step 1: ΔZ_t = θ (μ_t - Z_t) Δt + ε_t find the initial parameters
+  # Step 1: ΔZ_t = θ (μ_t - Z_t) Δt + ε_t find the initial parameters
   dZ <- diff(Z)
   Xreg <- (m_hat[-n] - Z[-n]) * h
   
@@ -114,22 +115,21 @@ estimate_ou_params <- function(Z, m_hat) {
   se_theta <- summary(fit0)$coefficients[1,2]
   se_theta <- ifelse(is.na(se_theta), 0.01, se_theta)
   
-    # Step 2: find the SE of parameters
-
+  # Step 2: find the SE of parameters,
   res <- resid(fit0)
   sigma2_hat <- var(res)
   sigma2_hat <- max(sigma2_hat, 1e-6)
   
-  # initial parameters of sigma2 and omega2
+  # Initial parameters of sigma2 and omega2,
   sigma2_init <- sigma2_hat / 2
   omega2_init <- sigma2_hat / 2
   
-  # Step 3: build the boundary
+  # Step 3: build the boundary,
   # theta
   theta_lower <- max(theta_hat - 3*se_theta, 1e-6)
   theta_upper <- theta_hat + 3*se_theta
   
-  # find the SE using X^2 distribution
+  # Find the SE using X^2 distribution,
   var_se_factor <- 3 / sqrt(2*(n-1))
   
   sigma2_lower <- max(sigma2_init - var_se_factor*sigma2_hat, 1e-6)
@@ -138,7 +138,7 @@ estimate_ou_params <- function(Z, m_hat) {
   omega2_lower <- max(omega2_init - var_se_factor*sigma2_hat, 1e-6)
   omega2_upper <- omega2_init + var_se_factor*sigma2_hat
   
-  # log optimization
+  # Log optimization
   log_sigma2_init <- log(sigma2_init)
   log_omega2_init <- log(omega2_init)
   
@@ -154,7 +154,7 @@ estimate_ou_params <- function(Z, m_hat) {
                    log_sigma2_init,
                    log_omega2_init)
   
-  # Step 4: L-BFGS-B optimization
+  # Step 4: L-BFGS-B optimization,
   opt <- tryCatch({
     optim(par = init_params,
           fn = log_likelihood_ou_recursive,
@@ -179,7 +179,7 @@ estimate_ou_params <- function(Z, m_hat) {
     omega2_opt <- omega2_init
   }
   
-  # Step 5: rebuild μ̂(t) = M(t) + M'(t)/θ
+  # Step 5: rebuild μ̂(t) = M(t) + M'(t)/θ,
   mu_final <- m_hat + mprime/theta_opt
   
   return(list(theta = theta_opt,
@@ -188,12 +188,12 @@ estimate_ou_params <- function(Z, m_hat) {
               mu_hat = mu_final))
 }
 
-# ---------- parameters limitation----------
+# ---------- Parameters limitation ----------
 clamp <- function(x, min_val, max_val) {
   max(min(x, max_val), min_val)
 }
 
-# ---------- parameters coefficients----------
+# ---------- Parameters coefficients ----------
 cond_coeffs <- function(theta, sigma2, omega2) {
   theta <- max(as.numeric(theta), 1e-6)
   sigma2 <- max(as.numeric(sigma2), 1e-6)
@@ -212,7 +212,7 @@ cond_coeffs <- function(theta, sigma2, omega2) {
   return(list(c=c, v=v, a=a))
 }
 
-# ---------- compute coverage----------
+# ---------- Compute coverage ----------
 compute_coverage_at_p <- function(bootstrap_draws_list, Z, p) {
   covered <- sapply(seq_along(bootstrap_draws_list), function(t1) {
     dr <- bootstrap_draws_list[[t1]]
@@ -225,7 +225,7 @@ compute_coverage_at_p <- function(bootstrap_draws_list, Z, p) {
   return(mean(covered, na.rm=T))
 }
 
-# ---------- 95% one-side prediction interval----------
+# ---------- 95% one-side prediction interval ----------
 find_calibrated_p <- function(bootstrap_draws_list, Z, target=0.95) {
   lower <- 0.5
   upper <- 0.999
@@ -251,7 +251,7 @@ find_calibrated_p <- function(bootstrap_draws_list, Z, target=0.95) {
   return(pstar)
 }
 
-# ---------- Main function----------
+# ---------- Main function ----------
 bootstrap_forecast_calibrated <- function(Z, 
                                           B=200, 
                                           alpha=0.05, 
@@ -265,7 +265,7 @@ bootstrap_forecast_calibrated <- function(Z,
   Viol_raw <- Viol_cal <- rep(NA, n)
   bootstrap_draws_list <- vector("list", n)
   
-  # Starting Parallel System
+  # Starting Parallel System,
   if (is.null(cores_limit)) {
     cores <- detectCores() - 1 
   } else {
@@ -275,7 +275,7 @@ bootstrap_forecast_calibrated <- function(Z,
   cl <- makeCluster(cores)
   registerDoParallel(cl)
   
-  # Input useful functions
+  # Input useful functions,
   clusterExport(cl, c("fit_mu", "estimate_ou_params", "cond_coeffs", "num_derivative", "clamp", "log_likelihood_ou_recursive"))
   clusterEvalQ(cl, {
     library(mgcv)
@@ -284,7 +284,7 @@ bootstrap_forecast_calibrated <- function(Z,
   
   if (verbose) message("Using ", cores, " cores for bootstrap replicates.")
   
-  # training data
+  # Deal with training data,
   start_t <- train_size 
   for (t in start_t:(n-1)) {
     if (verbose && t %% 50 == 0) {
@@ -297,15 +297,15 @@ bootstrap_forecast_calibrated <- function(Z,
     mu1 <- as.numeric(predict(gam_result$fit, newdata=data.frame(t=t+1)))
     mu1 <- ifelse(is.na(mu1) | is.infinite(mu1), mean(mu0, na.rm=T), mu1)
     
-    # Using LBFGS
+    # Using LBFGS,
     para <- estimate_ou_params(Ztr, mu0)
     cc <- cond_coeffs(para$theta, para$sigma2, para$omega2)
     
-    # Point estimate
+    # Point estimate,
     pred_val <- mu1 + cc$c * (Z[t] - mu0[t])
     PredMean[t+1] <- ifelse(is.na(pred_val) | is.infinite(pred_val), mean(Ztr, na.rm=T), pred_val)
     
-    # Bootstrap Sampling
+    # Bootstrap Sampling,
     mu0_local <- mu0
     t_local <- t
     Z_t_local <- Z[t]
@@ -325,14 +325,14 @@ bootstrap_forecast_calibrated <- function(Z,
       mb1 <- as.numeric(predict(gam_b$fit, newdata=data.frame(t=t_local+1)))
       mb1 <- ifelse(is.na(mb1), mean(mb, na.rm=T), mb1)
       
-      # LBFGS parameters optimization
+      # LBFGS parameters optimization,
       pb <- estimate_ou_params(Zb, mb)
       cb <- cond_coeffs(pb$theta, pb$sigma2, pb$omega2)
       
       rnorm(1, mb1 + cb$c * (Z_t_local - mb[t_local]), sqrt(cb$v))
     }
     
-    # Prediction interval
+    # Prediction interval,
     dr <- dr[!is.na(dr) & is.finite(dr)]
     bootstrap_draws_list[[t+1]] <- dr
     
@@ -350,10 +350,10 @@ bootstrap_forecast_calibrated <- function(Z,
     }
   }
   
-  # close parallel
+  # Close parallel,
   stopCluster(cl)
   
-  # calculate percentage
+  # Calculate percentage,
   pstar <- 1 - alpha
   if (do_calibrate) {
     if (verbose) message("starting calibrated")
@@ -376,12 +376,12 @@ bootstrap_forecast_calibrated <- function(Z,
     Viol_cal <- Viol_raw
   }
   
-  # calculate covergance
+  # Calculate covergance,
   cov_raw <- mean(!is.na(Viol_raw) & !Viol_raw, na.rm=T)
   cov_cal <- mean(!is.na(Viol_cal) & !Viol_cal, na.rm=T)
   
   
-  # sort out the output
+  # Sort out the output
   results_df <- data.frame(
     time = 1:n,
     Z = Z,
@@ -400,14 +400,14 @@ bootstrap_forecast_calibrated <- function(Z,
   ))
 }
 
-# ---------- Output the parameter estimation----------
+# ---------- Output the parameter estimation ----------
 generate_stat_report <- function(params_history, mu_history, train_size) {
   
-  # ---- test sample ----
+  # Test sample 
   params_test <- params_history[(train_size+1):length(params_history)]
   mu_test     <- mu_history[(train_size+1):length(mu_history)]
   
-  # ---- extract scalar params ----
+  # Extract scalar params, 
   theta_vec <- sapply(params_test, function(x) if(is.null(x)) NA else x$theta)
   sigma_vec <- sapply(params_test, function(x) if(is.null(x)) NA else x$sigma)
   omega_vec <- sapply(params_test, function(x) if(is.null(x)) NA else x$omega)
@@ -432,8 +432,8 @@ generate_stat_report <- function(params_history, mu_history, train_size) {
     })
   )
   
-  # ---- summarize mu(t) ----
-  # use last point of each mu_hat curve (corresponding to time t)
+  # ---- Summarize mu(t) ----
+  # Use last point of each mu_hat curve (corresponding to time t)
   mu_last_vec <- sapply(mu_test, function(x) if(is.null(x)) NA else tail(x,1))
   
   stats_mu <- data.frame(
@@ -459,7 +459,7 @@ generate_stat_report <- function(params_history, mu_history, train_size) {
   invisible(stats_all)
 }
 
-#----Data simulation For Trending OU process----
+#---- Data simulation For Trending OU process ----
 simulate_trending_ou <- function(n,
                                  theta,
                                  sigma2,
@@ -492,27 +492,31 @@ simulate_trending_ou <- function(n,
        true_params = list(theta=theta, sigma2=sigma2, omega2=omega2))
 }
 
-# ----Uploading the gambling data for 2020 and 2024 U.S. Election. Since the data have already done the cleaning, we do not need to do the data cleaning----.
-# ----2020 data as training data----
-# This is full dataset
-c<-read.csv("2020USElection.csv",header = T)
-# After we exclude the covid time
-d<-read.csv("2020USElectionwithoutcovid.csv",header=T)
+# ---- Uploading the gambling data for 2020 and 2024 U.S. Election. Since the data have already done the cleaning, we do not need to do the data cleaning ----.
+# ---- 2020 data as training data ----
+# This is full dataset,
+c <- read.csv("2020USElection.csv",header = T)
 
-# 2024 data as test data
-b<-read.csv("2024USElection.csv",header = T)
+# After we exclude the covid time
+d <- read.csv("2020USElectionwithoutcovid.csv",header=T)
+
+# 2024 data as test data,
+b <- read.csv("2024USElection.csv",header = T)
+
 # Y is sum of implied probabilities of two candidates.
 # For 2020 data,
-#Y<-d$Total
-# For 2024 data 
-Y<-b$Prob
+#Y <- d$Total.
+
+# For 2024 data, 
+Y <- b$Prob
 
 set.seed(239539)
 n <- length(Y)
+
 # Set the training size: 10000, based on the length of the whole data.
 train_size <- 10000
 
-# Run the output
+# Run the output.
 monitor_result <- bootstrap_forecast_calibrated(Y, train_size=10000)
 
 # Try to find the last changeable time.
@@ -521,13 +525,13 @@ find_first_changes <- function(time_vec, Z_vec) {
   change_idx <- c(1, which(diff(Z_vec) != 0) + 1)
   data.frame(time = time_vec[change_idx], Z = Z_vec[change_idx])
 }
-l<-monitor_result$results
+l <- monitor_result$results
 l_true <- l[l$Viol_cal == TRUE, ]
 
-#Find the signal trading points filtered.
+# Find the signal trading points filtered.
 change_points <- find_first_changes(l_true$time, l_true$Z)
 filtered <- change_points$time
-filtered<-na.omit(filtered)
+filtered <- na.omit(filtered)
 
 #For smoothing part of mu.
 fit_mu_online <- function(Z, k = 15, verbose = FALSE) {
@@ -567,27 +571,28 @@ fit_mu_online <- function(Z, k = 15, verbose = FALSE) {
   list(mu_history = mu_history, mu_next = mu_next)
 }
 res <- fit_mu_online(Y, k = 15, verbose = TRUE)
-r<-unlist(lapply(res$mu_history, function(x) tail(x, 1)))
+r <- unlist(lapply(res$mu_history, function(x) tail(x, 1)))
 
-#Gam for all training data.
+# Gam for all training data.
 fit_mu_all <- function(Z, k = 15) {
   df <- data.frame(Z=Z, t=seq_along(Z))
   gam(Z ~ s(t, bs="cs", k=min(k, max(3, nrow(df)-1))), data=df)
 }
-t<-as.numeric(predict(fit_mu_all(Y[1:10000])))
-r[1:10000]<-t
-r<-c(r,NA) # exclude the training size.
+t <- as.numeric(predict(fit_mu_all(Y[1:10000])))
+r[1:10000] <- t
+r <- c(r,NA) # exclude the training size.
 
+# Define the English time zone.
 Sys.setlocale("LC_TIME", "English")
 time <- as.POSIXct(b$timestampLON,
                    format="%Y/%m/%d %H:%M")
-#If we deal with 2020 dataset, we should exclude the Covid period.
+# If we deal with 2020 dataset, we should exclude the Covid period.
 # time <- as.POSIXct(c$timestampLON,format="%Y/%m/%d %H:%M")
-# Y<-append(Y,rep(NA,1079),after=11593)
-# r<-append(r,rep(NA,1079),after=11593)
+# Y <-  append(Y,rep(NA,1079),after=11593)
+# r <- append(r,rep(NA,1079),after=11593)
 # monitor_result$upper<-append(monitor_result$upper,rep(NA,1079),after=11593)
-# Ul<-l$Upper_cal
-# Ul<-append(Ul,rep(NA,1079),after=11593)
+# Ul <- l$Upper_cal
+# Ul <- append(Ul,rep(NA,1079),after=11593)
 # Ul_break <- Ul
 # filtered <- ifelse(filtered < 11594, filtered, filtered + 1079)
 
@@ -621,7 +626,7 @@ time <- as.POSIXct(b$timestampLON,
 #  theme_bw() +
 #  labs(x = "Date", y = "Sum Of Probability")
 
-# Define the 2024 dataset
+# Define the 2024 dataset,
 df <- data.frame(
   time = time,
   Y = Y,
@@ -663,18 +668,18 @@ print(p)
 # We find the outside prediction interval points.
 filtered <- na.omit(change_points$time)
 
-# Calculate the prediction rate
+# Calculate the prediction rate.
 # change_count1 <- length(filtered)
 # change_count2 <- sum(na.omit(diff(Y[-(1:10000)])) != 0)
 # change_count1/change_count2
 
 # Which Bet to place, Using 2020 data to build the Bradley–Terry Model, we have two candidates Trump and Biden from two parties.
-Trump<-as.numeric(na.omit(c$probTrump))
-Biden<-as.numeric(na.omit(c$probBiden))
+Trump <- as.numeric(na.omit(c$probTrump))
+Biden <- as.numeric(na.omit(c$probBiden))
 
-#For 2024 test data, we need to check the model.
-#Trump<-as.numeric(b$Donald.Trump.Prob)
-#Harris<-as.numeric(b$Kamala.Harris.Prob)
+# For 2024 test data, we need to check the model.
+# Trump <- as.numeric(b$Donald.Trump.Prob)
+# Harris<- as.numeric(b$Kamala.Harris.Prob)
 # According to the outside points find the nearest last changeable points.
 get_last_change_index <- function(x, targets) {
   sapply(targets, function(i) {
@@ -697,25 +702,25 @@ find_next_change <- function(x, pos) {
 }
 
 # Filtered is the signal points and fitered1 is the trading points. 
-filtered1<-sapply(filtered, function(p) find_next_change(Y, p))
+filtered1 <- sapply(filtered, function(p) find_next_change(Y, p))
 
-#We use the same methods for 2020 dataset which exclude the Covid time(points: 11593 to 12673).
-#For Trump we have three points, outside points (predicted points), one point ahead outside points and the nearest changeable points.
+# We use the same methods for 2020 dataset which exclude the Covid time(points: 11593 to 12673).
+# For Trump we have three points, outside points (predicted points), one point ahead outside points and the nearest changeable points.
 last_change_indices <- get_last_change_index(Trump, filtered)
-T1<-Trump[filtered1]
-T2<-Trump[filtered]
-T3<-Trump[last_change_indices]
+T1 <- Trump[filtered1]
+T2 <- Trump[filtered]
+T3 <- Trump[last_change_indices]
 
 #For Biden we have the same three points.
 last_change_indices <- get_last_change_index(Biden, filtered)
-B1<-Biden[filtered1]
-B2<-Biden[filtered]
-B3<-Biden[last_change_indices]
+B1 <- Biden[filtered1]
+B2 <- Biden[filtered]
+B3 <- Biden[last_change_indices]
 
 # First step, build pairwise dataset with feature vectors.
 # Feature vectors of Delta Trump and Biden
-DeltaTrump1<-T2-T3
-DeltaBiden1<-B2-B3
+DeltaTrump1 <- T2-T3
+DeltaBiden1 <- B2-B3
 
 feats <- data.frame(
   DeltaTrump1 = DeltaTrump1,
@@ -725,8 +730,8 @@ feats <- data.frame(
 )
 
 # Give the lable whether to place bet on Trump or Biden.
-utility_1<-1/T1-1/T2
-utility_2<-1/B1-1/B2
+utility_1 <- 1/T1-1/T2
+utility_2 <- 1/B1-1/B2
 feats$label <- as.integer(utility_1>utility_2)
 
 build_pairwise_data <- function(feats) {
@@ -760,19 +765,19 @@ hl_test <- hoslem.test(obs, probs)
 
 # Then we use 2024 data to do the prediction, Trump data is T and Harris data is H. Before this we need to use bootstrap_forecast_calibrated(Y, train_size=10000) to find the signal points for 2024.
 last_change_indices <- get_last_change_index(Trump, filtered)
-T1<-Trump[filtered1]
-T2<-Trump[filtered]
-T3<-Trump[last_change_indices]
+T1 <- Trump[filtered1]
+T2 <- Trump[filtered]
+T3 <- Trump[last_change_indices]
 
 #For Harris we have the same three points.
 last_change_indices <- get_last_change_index(Harris, filtered)
-H1<-Harris[filtered1]
-H2<-Harris[filtered]
-H3<-Harris[last_change_indices]
+H1 <- Harris[filtered1]
+H2 <- Harris[filtered]
+H3 <- Harris[last_change_indices]
 
 # Build the covariates
-DeltaTrump1<-T2-T3
-DeltaHarris1<-H2-H3
+DeltaTrump1 <- T2-T3
+DeltaHarris1 <- H2-H3
 
 newdata <- data.frame(
   diff_Delta = DeltaTrump1-DeltaHarris1,
@@ -787,7 +792,7 @@ selected_value <- ifelse(bt_pred > 0, 1/T1, 1/H1)
 selected_baseline <- ifelse(bt_pred > 0, 1/T2, 1/H2)
 profit <- selected_value - selected_baseline
 
-# Return_metrics.R
+# Return_metrics.R,
 calc_returns_metrics <- function(o_buy, o_sell, method = c("probability","odds")) {
   # o_buy, o_sell : numeric vectors of buy/sell odds (same length)
   # method : "probability" uses R = 1/o_sell - 1/o_buy (recommended)
@@ -797,14 +802,14 @@ calc_returns_metrics <- function(o_buy, o_sell, method = c("probability","odds")
   n <- length(o_buy)
   
   if(method == "probability") {
-    R <- 1 / o_sell - 1 / o_buy   # absolute change in implied probability
+    R <- 1 / o_sell - 1 / o_buy   # Absolute change in implied probability
   } else {
-    R <- (o_sell - o_buy) / o_buy # relative change in odds price
+    R <- (o_sell - o_buy) / o_buy # Relative change in odds price
   }
   
-  # sample statistics
-  ER <- mean(R, na.rm = TRUE)         # sample mean (expected return)
-  sdR <- sd(R, na.rm = TRUE)          # sample std dev
+  # Sample statistics
+  ER <- mean(R, na.rm = TRUE)         # Sample mean (expected return)
+  sdR <- sd(R, na.rm = TRUE)          # Sample std dev
   SR <- ifelse(sdR > 0, ER / sdR, NA) # Sharpe ratio (risk-free rate assumed zero)
   
   list(
