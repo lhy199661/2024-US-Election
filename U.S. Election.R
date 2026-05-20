@@ -640,6 +640,7 @@ df_filtered <- data.frame(
   time = time[filtered],
   Y = Y[filtered]
 )
+
 #Draw the plot
 p <- ggplot(df, aes(x = time)) +
   geom_line(aes(y = Y), color = "gray60") +
@@ -675,124 +676,161 @@ filtered <- na.omit(change_points$time)
 # change_count1/change_count2
 
 # Which Bet to place, Using 2020 data to build the Bradley–Terry Model, we have two candidates Trump and Biden from two parties.
-Trump <- as.numeric(na.omit(c$probTrump))
-Biden <- as.numeric(na.omit(c$probBiden))
+Trump_2020 <- as.numeric(na.omit(c$probTrump))
+Biden_2020 <- as.numeric(na.omit(c$probBiden))
 
 # For 2024 test data, we need to check the model.
-Trump1 <- as.numeric(b$Donald.Trump.Prob)
-Harris1 <- as.numeric(b$Kamala.Harris.Prob)
+Trump_2024  <- as.numeric(b$Donald.Trump.Prob)
+Harris_2024 <- as.numeric(b$Kamala.Harris.Prob)
 
-# According to the outside points find the nearest last changeable points.
+
+# Find nearest previous change point
 get_last_change_index <- function(x, targets) {
   sapply(targets, function(i) {
     if (i <= 1) return(NA)
     prev_idx <- which(x[1:(i - 1)] != x[i])
     if (length(prev_idx) == 0) return(NA)
-    return(max(prev_idx))
+    max(prev_idx)
   })
 }
 
-# We need to find the trading points filtered1.
+# Find next change point
 find_next_change <- function(x, pos) {
   start_val <- x[pos]
   idx <- which(x[(pos + 1):length(x)] != start_val)[1]
   if (is.na(idx)) {
-    return(NA)   
-  } else {
-    return(pos + idx)  
+    return(NA)
   }
+  pos + idx
 }
 
-# Filtered is the signal points and fitered1 is the trading points. 
-filtered1 <- sapply(filtered, function(p) find_next_change(Y, p))
 
-# We use the same methods for 2020 dataset which exclude the Covid time(points: 11593 to 12673).
-# For Trump we have three points, outside points (predicted points), one point ahead outside points and the nearest changeable points.
-last_change_indices <- get_last_change_index(Trump, filtered)
-T1 <- Trump[filtered1]
-T2 <- Trump[filtered]
-T3 <- Trump[last_change_indices]
-
-#For Biden we have the same three points.
-last_change_indices <- get_last_change_index(Biden, filtered)
-B1 <- Biden[filtered1]
-B2 <- Biden[filtered]
-B3 <- Biden[last_change_indices]
-
-# First step, build pairwise dataset with feature vectors.
-# Feature vectors of Delta Trump and Biden
-DeltaTrump1 <- T2-T3
-DeltaBiden1 <- B2-B3
-
-feats <- data.frame(
-  DeltaTrump1 = DeltaTrump1,
-  T2 = T2,
-  DeltaBiden1 = DeltaBiden1,
-  B2 = B2
-)
-
-# Give the lable whether to place bet on Trump or Biden.
-utility_1 <- 1/T1-1/T2
-utility_2 <- 1/B1-1/B2
-feats$label <- as.integer(utility_1>utility_2)
-
-build_pairwise_data <- function(feats) {
-  feats$Delta1 <- feats$DeltaTrump1 - feats$DeltaBiden1
-  feats$Delta2 <- feats$T2 - feats$B2
-  feats
+# Build Bradley-Terry dataset.
+build_bt_dataset <- function(candidate1,
+                             candidate2,
+                             filtered,
+                             Y) {
+  # Trading points
+  filtered1 <- sapply(filtered, function(p) {
+    find_next_change(Y, p)
+  })
+  
+  # Previous changeable points
+  last_change_indices1 <- get_last_change_index(candidate1, filtered)
+  last_change_indices2 <- get_last_change_index(candidate2, filtered)
+  
+  # Candidate 1
+  C1_trade  <- candidate1[filtered1]
+  C1_signal <- candidate1[filtered]
+  C1_prev   <- candidate1[last_change_indices1]
+  
+  # Candidate 2
+  C2_trade  <- candidate2[filtered1]
+  C2_signal <- candidate2[filtered]
+  C2_prev   <- candidate2[last_change_indices2]
+  
+  # Feature construction
+  Delta1 <- C1_signal - C1_prev
+  Delta2 <- C2_signal - C2_prev
+  
+  # Utility
+  utility_1 <- 1 / C1_trade - 1 / C1_signal
+  utility_2 <- 1 / C2_trade - 1 / C2_signal
+  label <- as.integer(utility_1 > utility_2)
+  
+  # Final dataframe
+  bt_data <- data.frame(
+    Candidate1 = label,
+    Candidate2 = 1 - label,
+    diff_Delta = Delta1 - Delta2,
+    diff_signal = C1_signal - C2_signal,
+    C1_trade = C1_trade,
+    C1_signal = C1_signal,
+    C2_trade = C2_trade,
+    C2_signal = C2_signal
+  )
+  
+  return(bt_data)
 }
 
-pair_df <- build_pairwise_data(feats)
-bt_data <- data.frame(
-  Trump = feats$label,
-  Biden = 1 - feats$label
-)
 
-bt_data$diff_Delta <- feats$DeltaTrump1 - feats$DeltaBiden1
-bt_data$diff_T2 <- feats$T2 - feats$B2
+# Bradley-Terry Model Fitting.
+fit_bt_model <- function(bt_data) {
+  model <- glm(
+    Candidate1 ~ diff_Delta + diff_signal,
+    data = bt_data,
+    family = binomial()
+  )
+  probs <- predict(model, type = "response")
+  return(list(
+    model = model,
+    probabilities = probs
+  ))
+}
+
+# First step, build pairwise 2020 dataset with feature vectors.
+bt_train <- build_bt_dataset(
+  candidate1 = Trump_2020,
+  candidate2 = Biden_2020,
+  filtered = filtered,
+  Y = Y
+)
 
 # Fit Bradley–Terry logistic model.
-bt_model <- glm(Trump ~ diff_Delta + diff_T2, data = bt_data, family = binomial())
-summary(bt_model)
+bt_fit <- fit_bt_model(bt_train)
+summary(bt_fit$model)
+
 
 # Extract fitted probabilities from the Bradley–Terry model.
-probs <- predict(bt_model, type = "response")
+probs <- predict(bt_fit$model, type = "response")
 
 # Extract the observed place indicator.
-#    (1 = Place Trump, 0 = Place Biden)
-obs <- bt_data$Trump
+#    (1 = Place candidate Trump, 0 = Place candidate Biden)
+obs <- bt_train$Candidate1
 
 # Hosmer–Lemeshow goodness-of-fit test.
 hl_test <- hoslem.test(obs, probs)
 
 # Then we use 2024 data to do the prediction, Trump data is T and Harris data is H. Before this we need to use bootstrap_forecast_calibrated(Y, train_size=10000) to find the signal points for 2024.
-last_change_indices <- get_last_change_index(Trump1, filtered)
-T1 <- Trump1[filtered1]
-T2 <- Trump1[filtered]
-T3 <- Trump1[last_change_indices]
+# We should recalculate the signal points filtered.
+Trump_2024  <- as.numeric(b$Donald.Trump.Prob)
+Harris_2024 <- as.numeric(b$Kamala.Harris.Prob)
 
-#For Harris we have the same three points.
-last_change_indices <- get_last_change_index(Harris1, filtered)
-H1 <- Harris1[filtered1]
-H2 <- Harris1[filtered]
-H3 <- Harris1[last_change_indices]
-
-# Build the covariates
-DeltaTrump1 <- T2-T3
-DeltaHarris1 <- H2-H3
-
-newdata <- data.frame(
-  diff_Delta = DeltaTrump1-DeltaHarris1,
-  diff_T2 = T2-H2
+# We build the 2024 test dataset.
+bt_test <- build_bt_dataset(
+  candidate1 = Trump_2024,
+  candidate2 = Harris_2024,
+  filtered = filtered,
+  Y = Y
 )
 
-bt_pred_prob <- predict(bt_model, newdata = newdata, type = "response")
-bt_pred <- as.integer(bt_pred_prob > 0.5)
+# Predicted probabilities,
+test_probs <- predict(
+  bt_fit$model,
+  newdata = bt_test,
+  type = "response"
+)
 
-# We need to check the expected return and sharpe ratio.
-selected_value <- ifelse(bt_pred > 0, 1/T1, 1/H1)
-selected_baseline <- ifelse(bt_pred > 0, 1/T2, 1/H2)
+# Choose Candidate 1 if probability > 0.5
+bt_pred <- as.integer(test_probs > 0.5)
+
+# We need to check the expected return and Sharpe ratio.
+selected_value <- ifelse(
+  bt_pred == 1,
+  1 / bt_test$C1_trade,
+  1 / bt_test$C2_trade
+)
+
+selected_baseline <- ifelse(
+  bt_pred == 1,
+  1 / bt_test$C1_signal,
+  1 / bt_test$C2_signal
+)
+
+# Calculate the profit.
 profit <- selected_value - selected_baseline
+sum(profit)
+
 
 # Return_metrics.R,
 calc_returns_metrics <- function(o_buy, o_sell, method = c("probability","odds")) {
