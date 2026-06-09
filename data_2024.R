@@ -1,24 +1,57 @@
-# =========================
-# 2024 Election Data
-# =========================
+# =========================================================
+# data_2024.R
+# 2024 US Election Data
+# =========================================================
 
-b <- read.csv(
+cat("Loading 2024 Election Data...\n")
+
+# ---------------------------------------------------------
+# Load data
+# ---------------------------------------------------------
+
+election2024 <- read.csv(
   "2024USElection.csv",
   header = TRUE
 )
 
+# ---------------------------------------------------------
+# Candidate probabilities
+# ---------------------------------------------------------
+
 Trump_2024 <- as.numeric(
-  b$Donald.Trump.Prob
+  election2024$Donald.Trump.Prob
 )
 
 Harris_2024 <- as.numeric(
-  b$Kamala.Harris.Prob
+  election2024$Kamala.Harris.Prob
 )
 
-Y_2024 <- b$Prob
+# ---------------------------------------------------------
+# OU process series
+# ---------------------------------------------------------
 
-Sys.setlocale("LC_TIME", "English")
+Y_2024 <- as.numeric(
+  election2024$Prob
+)
+
+# ---------------------------------------------------------
+# Time index
+# ---------------------------------------------------------
+
+Sys.setlocale(
+  "LC_TIME",
+  "English"
+)
+
 time_2024 <- as.POSIXct(
-  b$timestampLON,
+  election2024$timestampLON,
   format = "%Y/%m/%d %H:%M"
 )
+
+# ---------------------------------------------------------
+# Basic information
+# ---------------------------------------------------------
+
+n_2024 <- length(Y_2024)
+
+cat("2024 observations:", n_2024, "\n")
