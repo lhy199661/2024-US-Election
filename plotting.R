@@ -210,3 +210,71 @@ plot_2020_results <- function(Y,
   print(q)
   invisible(q)
 }
+
+plot_sim_results <- function(Y,
+                             monitor_result,
+                             filtered,
+                             time,
+                             train_size) {
+  
+  l <- monitor_result$results
+  
+  idx <- l$original_index
+  
+  df <- data.frame(
+    time = time[idx],
+    Y = l$Z,
+    Upper = l$Upper,
+    Mu_hat = l$Mu_hat
+  )
+  
+  df_filtered <- data.frame(
+    time = time[filtered],
+    Y = Y[filtered]
+  )
+  
+  p <- ggplot(df, aes(x = time)) +
+    
+    geom_line(
+      aes(y = Y),
+      color = "gray60"
+    ) +
+    
+    geom_line(
+      aes(y = Upper),
+      color = "red",
+      linewidth = 0.7,
+      na.rm = TRUE
+    ) +
+    
+    geom_line(
+      aes(y = Mu_hat),
+      color = "green3",
+      linewidth = 0.7,
+      na.rm = TRUE
+    ) +
+    
+    geom_point(
+      data = df_filtered,
+      aes(x = time, y = Y),
+      shape = 4,
+      color = "blue",
+      size = 0.8 * 2.5
+    ) +
+    
+    geom_vline(
+      xintercept = time[train_size],
+      color = "magenta",
+      linetype = "dashed"
+    ) +
+    
+    labs(
+      x = "Time",
+      y = "Sum Of Probability"
+    ) +
+    
+    theme_bw()
+  
+  print(p)
+  invisible(p)
+}

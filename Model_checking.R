@@ -209,6 +209,7 @@ sim_data <- simulate_trending_ou_exact(
 Y_sim <- sim_data$Z
 
 time_sim <- seq_along(Y_sim)
+time_index <- time_sim
 
 # ------------------------------------------------------------
 # Run forecasting model
