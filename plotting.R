@@ -11,11 +11,13 @@ plot_2024_results <- function(Y,
   
   l <- monitor_result$results
   
-  idx <- l$original_index
+  df_y <- data.frame(
+    time = time,
+    Y = Y
+  )
   
-  df <- data.frame(
-    time = time[idx],
-    Y = l$Z,
+  df_model <- data.frame(
+    time = time[l$original_index],
     Upper = l$Upper,
     Mu_hat = l$Mu_hat
   )
@@ -25,22 +27,25 @@ plot_2024_results <- function(Y,
     Y = Y[filtered]
   )
   
-  p <- ggplot(df, aes(x = time)) +
+  p <- ggplot() +
     
     geom_line(
-      aes(y = Y),
+      data = df_y,
+      aes(x = time, y = Y),
       color = "gray60"
     ) +
     
     geom_line(
-      aes(y = Upper),
+      data = df_model,
+      aes(x = time, y = Upper),
       color = "red",
       linewidth = 0.7,
       na.rm = TRUE
     ) +
     
     geom_line(
-      aes(y = Mu_hat),
+      data = df_model,
+      aes(x = time, y = Mu_hat),
       color = "green3",
       linewidth = 0.7,
       na.rm = TRUE
@@ -71,6 +76,7 @@ plot_2024_results <- function(Y,
   invisible(p)
 }
 
+
 plot_2020_results <- function(Y,
                               monitor_result,
                               filtered,
@@ -99,29 +105,10 @@ plot_2020_results <- function(Y,
   # Insert COVID gap to match full 2020 time vector
   # --------------------------------------------------
   
-  Y_plot <- append(
-    Y,
-    rep(NA, covid_gap),
-    after = covid_insert_after
-  )
-  
-  Mu_plot <- append(
-    Mu_nocovid,
-    rep(NA, covid_gap),
-    after = covid_insert_after
-  )
-  
-  Upper_plot <- append(
-    Upper_nocovid,
-    rep(NA, covid_gap),
-    after = covid_insert_after
-  )
-  
-  PredMean_plot <- append(
-    PredMean_nocovid,
-    rep(NA, covid_gap),
-    after = covid_insert_after
-  )
+  Y_plot <- append(Y, rep(NA, covid_gap), after = covid_insert_after)
+  Mu_plot <- append(Mu_nocovid, rep(NA, covid_gap), after = covid_insert_after)
+  Upper_plot <- append(Upper_nocovid, rep(NA, covid_gap), after = covid_insert_after)
+  PredMean_plot <- append(PredMean_nocovid, rep(NA, covid_gap), after = covid_insert_after)
   
   # --------------------------------------------------
   # Signal points are original no-COVID indices
@@ -139,6 +126,12 @@ plot_2020_results <- function(Y,
       filtered_plot >= 1 &
       filtered_plot <= length(time)
   ]
+  
+  train_plot_index <- ifelse(
+    train_size <= covid_insert_after,
+    train_size,
+    train_size + covid_gap
+  )
   
   df_plot <- data.frame(
     time = time,
@@ -183,7 +176,7 @@ plot_2020_results <- function(Y,
     ) +
     
     geom_vline(
-      xintercept = time[train_size],
+      xintercept = time[train_plot_index],
       color = "magenta",
       linetype = "dashed"
     ) +
@@ -219,11 +212,13 @@ plot_sim_results <- function(Y,
   
   l <- monitor_result$results
   
-  idx <- l$original_index
+  df_y <- data.frame(
+    time = time,
+    Y = Y
+  )
   
-  df <- data.frame(
-    time = time[idx],
-    Y = l$Z,
+  df_model <- data.frame(
+    time = time[l$original_index],
     Upper = l$Upper,
     Mu_hat = l$Mu_hat
   )
@@ -233,22 +228,25 @@ plot_sim_results <- function(Y,
     Y = Y[filtered]
   )
   
-  p <- ggplot(df, aes(x = time)) +
+  p <- ggplot() +
     
     geom_line(
-      aes(y = Y),
+      data = df_y,
+      aes(x = time, y = Y),
       color = "gray60"
     ) +
     
     geom_line(
-      aes(y = Upper),
+      data = df_model,
+      aes(x = time, y = Upper),
       color = "red",
       linewidth = 0.7,
       na.rm = TRUE
     ) +
     
     geom_line(
-      aes(y = Mu_hat),
+      data = df_model,
+      aes(x = time, y = Mu_hat),
       color = "green3",
       linewidth = 0.7,
       na.rm = TRUE
