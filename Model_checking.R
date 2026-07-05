@@ -14,7 +14,7 @@ library(ggplot2)
 library(mgcv)
 library(gridExtra)
 
-output_dir <- "C:/Users/32884/Desktop/new/model_checking_figures"
+output_dir <- file.path("outputs", "model_checking_figures")
 
 if (!dir.exists(output_dir)) {
   dir.create(output_dir, recursive = TRUE)
@@ -86,7 +86,7 @@ estimate_ou_params_sim <- function(Z,
                                    M_hat,
                                    h_vec = NULL,
                                    time_index = NULL,
-                                   init_theta = 0.15,
+                                   init_theta = NULL,
                                    max_theta = 2,
                                    max_var = 5) {
   
@@ -104,6 +104,27 @@ estimate_ou_params_sim <- function(Z,
     M_hat,
     time_index = time_index
   )
+  
+  if (is.null(init_theta)) {
+    h_trans <- pmax(h_vec[-1], 1e-8)
+    dZ <- diff(Z)
+    Xreg <- (M_hat[-n] - Z[-n]) * h_trans
+    
+    fit0 <- tryCatch(
+      lm(dZ ~ 0 + Xreg),
+      error = function(e) NULL
+    )
+    
+    init_theta <- if (!is.null(fit0)) {
+      as.numeric(coef(fit0)[1])
+    } else {
+      NA_real_
+    }
+    
+    if (!is.finite(init_theta) || init_theta <= 0) {
+      init_theta <- 0.1
+    }
+  }
   
   init_var <- max(var(diff(Z), na.rm = TRUE), 1e-4)
   
@@ -149,7 +170,7 @@ estimate_from_simulation <- function(seed,
                                      theta_true = 0.15,
                                      sigma2_true = 0.55,
                                      omega2_true = 0.20,
-                                     use_true_M = TRUE) {
+                                     use_true_M = FALSE) {
   
   sim <- simulate_trending_ou_exact(
     n = n,
@@ -179,7 +200,7 @@ estimate_from_simulation <- function(seed,
     M_hat = M_train,
     h_vec = h_train,
     time_index = time_train,
-    init_theta = theta_true,
+    init_theta = NULL,
     max_theta = 1,
     max_var = 5
   )
@@ -268,7 +289,7 @@ mc_results <- do.call(
   lapply(
     1:n_rep,
     estimate_from_simulation,
-    use_true_M = TRUE
+    use_true_M = FALSE
   )
 )
 
