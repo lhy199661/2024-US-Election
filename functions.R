@@ -613,6 +613,7 @@ bootstrap_forecast_live <- function(
   omega2_store <- rep(NA_real_, n)
   
   bootstrap_draws_list <- vector("list", n)
+  bootstrap_params_list <- vector("list", n)
   
   # Initial training trend for plotting
   Z_train0 <- Z_eff[1:train_size_eff]
@@ -766,9 +767,9 @@ bootstrap_forecast_live <- function(
     omega2_store[t + 1] <- params$omega2
     
     # Step 3: bootstrap
-    draws <- foreach::foreach(
+    boot_mat <- foreach::foreach(
       b = 1:B,
-      .combine = c,
+      .combine = rbind,
       .errorhandling = "remove",
       .packages = c("mgcv"),
       .options.RNG = 100000 + t
@@ -839,15 +840,45 @@ bootstrap_forecast_live <- function(
         h_next = h_next
       )
       
-      rnorm(
-        1,
-        mean = cond_b$mean,
-        sd = cond_b$sd
+      c(
+        draw = rnorm(1, mean = cond_b$mean, sd = cond_b$sd),
+        theta = pb$theta,
+        sigma2 = pb$sigma2,
+        omega2 = pb$omega2
       )
     }
     
-    draws <- draws[is.finite(draws)]
+    if (is.null(boot_mat) || length(boot_mat) == 0) {
+      stop(
+        paste0(
+          "No valid bootstrap results at effective time t = ",
+          t,
+          ". Check GAM fitting, MLE, or parallel workers."
+        )
+      )
+    }
+    
+    boot_mat <- as.data.frame(boot_mat)
+    
+    boot_mat$draw <- as.numeric(boot_mat$draw)
+    boot_mat$theta <- as.numeric(boot_mat$theta)
+    boot_mat$sigma2 <- as.numeric(boot_mat$sigma2)
+    boot_mat$omega2 <- as.numeric(boot_mat$omega2)
+    
+    draw_ok <- is.finite(boot_mat$draw)
+    draws <- boot_mat$draw[draw_ok]
+    
     bootstrap_draws_list[[t + 1]] <- draws
+    
+    param_ok <- is.finite(boot_mat$theta) &
+      is.finite(boot_mat$sigma2) &
+      is.finite(boot_mat$omega2)
+    
+    bootstrap_params_list[[t + 1]] <- boot_mat[
+      param_ok,
+      c("theta", "sigma2", "omega2"),
+      drop = FALSE
+    ]
     
     if (length(draws) == 0) {
       stop(
@@ -924,6 +955,7 @@ bootstrap_forecast_live <- function(
   return(list(
     results = results_df,
     bootstrap_draws = bootstrap_draws_list,
+    bootstrap_params = bootstrap_params_list,
     coverage = coverage,
     skip_flat = skip_flat,
     train_size_raw = train_size_raw,
@@ -962,6 +994,92 @@ bootstrap_forecast_calibrated <- function(
 }
 
 bootstrap_forecast <- bootstrap_forecast_live
+
+# Parameter Output
+get_bootstrap_param_ci <- function(monitor_result,
+                                   row = NULL,
+                                   level = 0.95,
+                                   method = c("percentile", "normal")) {
+  
+  method <- match.arg(method)
+  
+  if (is.null(monitor_result$bootstrap_params)) {
+    stop("monitor_result does not contain bootstrap_params.")
+  }
+  
+  if (is.null(row)) {
+    nonempty <- which(
+      vapply(
+        monitor_result$bootstrap_params,
+        function(x) {
+          !is.null(x) && nrow(x) > 0
+        },
+        logical(1)
+      )
+    )
+    
+    if (length(nonempty) == 0) {
+      stop("No non-empty bootstrap parameter estimates found.")
+    }
+    
+    row <- tail(nonempty, 1)
+  }
+  
+  boot_params <- monitor_result$bootstrap_params[[row]]
+  
+  if (is.null(boot_params) || nrow(boot_params) == 0) {
+    stop("No bootstrap parameter estimates at the selected row.")
+  }
+  
+  point_est <- monitor_result$results[
+    row,
+    c("theta", "sigma2", "omega2"),
+    drop = FALSE
+  ]
+  
+  alpha <- 1 - level
+  
+  boot_se <- apply(
+    boot_params,
+    2,
+    sd,
+    na.rm = TRUE
+  )
+  
+  if (method == "percentile") {
+    
+    ci <- apply(
+      boot_params,
+      2,
+      quantile,
+      probs = c(alpha / 2, 1 - alpha / 2),
+      na.rm = TRUE,
+      type = 8
+    )
+    
+    lower <- ci[1, ]
+    upper <- ci[2, ]
+    
+  } else {
+    
+    z <- qnorm(1 - alpha / 2)
+    
+    lower <- as.numeric(point_est) - z * boot_se
+    upper <- as.numeric(point_est) + z * boot_se
+  }
+  
+  data.frame(
+    parameter = c("theta", "sigma2", "omega2"),
+    estimate = as.numeric(point_est),
+    bootstrap_se = as.numeric(boot_se),
+    lower = as.numeric(lower),
+    upper = as.numeric(upper),
+    level = level,
+    method = method,
+    row = row,
+    B_used = nrow(boot_params)
+  )
+}
 
 # ============================================================
 # 5. Signal extraction

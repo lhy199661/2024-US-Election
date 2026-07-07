@@ -103,6 +103,11 @@ monitor_result_2020 <- run_ou_forecast(
   time_index = time_index_2020
 )
 
+ci_2020 <- get_bootstrap_param_ci(
+  monitor_result_2020,
+  method = "percentile"
+)
+
 write.csv(
   monitor_result_2020$results,
   file = file.path(output_dir, "monitor_result_2020.csv"),
@@ -237,6 +242,11 @@ monitor_result_2024 <- run_ou_forecast(
   B = 200,
   skip_flat = TRUE,
   time_index = time_index_2024
+)
+
+ci_2024 <- get_bootstrap_param_ci(
+  monitor_result_2024,
+  method = "percentile"
 )
 
 write.csv(
