@@ -119,84 +119,127 @@ construct_mu_next <- function(M_hat,
 # 2. Kalman likelihood and OU estimation
 # ============================================================
 
-log_likelihood_ou_recursive <- function(params,
-                                        Z,
-                                        M_hat,
-                                        Mprime = NULL,
-                                        h_vec = NULL,
-                                        time_index = NULL) {
+log_likelihood_ou_recursive <- function(
+    params,
+    Z,
+    M_hat,
+    h_vec = NULL
+) {
   
   theta <- as.numeric(params[1])
   log_sigma2 <- as.numeric(params[2])
   log_omega2 <- as.numeric(params[3])
   
-  if (any(is.na(c(theta, log_sigma2, log_omega2))) ||
-      any(is.infinite(c(theta, log_sigma2, log_omega2)))) {
+  # Basic parameter checks
+  if (
+    any(!is.finite(c(theta, log_sigma2, log_omega2))) ||
+    theta <= 1e-6 ||
+    log_sigma2 < -20 || log_sigma2 > 20 ||
+    log_omega2 < -20 || log_omega2 > 20
+  ) {
     return(1e10)
   }
   
-  if (theta < 1e-6 ||
-      log_sigma2 < -20 || log_sigma2 > 20 ||
-      log_omega2 < -20 || log_omega2 > 20) {
-    return(1e10)
-  }
-  
-  theta <- max(theta, 1e-6)
-  sigma2 <- max(exp(log_sigma2), 1e-6)
-  omega2 <- max(exp(log_omega2), 1e-6)
+  sigma2 <- exp(log_sigma2)
+  omega2 <- exp(log_omega2)
   
   n <- length(Z)
+  
+  if (length(M_hat) != n) {
+    stop("Z and M_hat must have the same length.")
+  }
+  
+  if (n < 2L) {
+    return(1e10)
+  }
   
   if (is.null(h_vec)) {
     h_vec <- rep(1, n)
   }
   
-  if (is.null(Mprime)) {
-    Mprime <- num_derivative(M_hat, time_index = time_index)
+  if (length(h_vec) != n) {
+    stop("h_vec must have the same length as Z.")
   }
   
-  mu_hat <- M_hat + Mprime / theta
+  if (
+    any(!is.finite(Z)) ||
+    any(!is.finite(M_hat)) ||
+    any(!is.finite(h_vec))
+  ) {
+    return(1e10)
+  }
   
-  Q_prev <- mu_hat[1]
+  # Initial distribution:
+  # E(Q_1) = M(t_1)
+  Q_prev <- M_hat[1]
   P_prev <- sigma2 / (2 * theta)
   
   ll <- 0
   
-  for (t in 1:n) {
+  for (t in seq_len(n)) {
     
-    if (t == 1) {
+    if (t == 1L) {
       
-      Q_pred <- mu_hat[t]
+      Q_pred <- M_hat[1]
       P_pred <- sigma2 / (2 * theta)
       
     } else {
       
-      h_t <- max(h_vec[t], 1e-8)
-      a_t <- exp(-theta * h_t)
-      q_t <- sigma2 / (2 * theta) * (1 - exp(-2 * theta * h_t))
+      h_t <- h_vec[t]
       
-      Q_pred <- a_t * Q_prev + (1 - a_t) * mu_hat[t]
+      if (h_t <= 0) {
+        return(1e10)
+      }
+      
+      a_t <- exp(-theta * h_t)
+      
+      q_t <- sigma2 / (2 * theta) * (1 - a_t^2)
+      
+      # Exact conditional mean based on the fitted marginal mean M(t)
+      Q_pred <- M_hat[t] +
+        a_t * (Q_prev - M_hat[t - 1])
+      
       P_pred <- a_t^2 * P_prev + q_t
     }
     
-    P_pred <- max(P_pred, 1e-10)
-    S_t <- max(P_pred + omega2, 1e-10)
+    if (!is.finite(P_pred) || P_pred <= 0) {
+      return(1e10)
+    }
     
+    # Observation predictive variance
+    S_t <- P_pred + omega2
+    
+    if (!is.finite(S_t) || S_t <= 0) {
+      return(1e10)
+    }
+    
+    # Kalman innovation
     err <- Z[t] - Q_pred
     
+    # Gaussian innovations log-likelihood
     ll <- ll - 0.5 * (
       log(2 * pi * S_t) +
         err^2 / S_t
     )
     
+    # Kalman update
     K_t <- P_pred / S_t
     
     Q_prev <- Q_pred + K_t * err
-    P_prev <- max((1 - K_t) * P_pred, 1e-10)
+    P_prev <- (1 - K_t) * P_pred
+    
+    if (!is.finite(Q_prev) || !is.finite(P_prev)) {
+      return(1e10)
+    }
+    
+    P_prev <- max(P_prev, 1e-12)
   }
   
-  ll <- ifelse(is.na(ll) | is.infinite(ll), -1e10, ll)
+  if (!is.finite(ll)) {
+    return(1e10)
+  }
   
+  # optim() minimizes the objective
   return(-ll)
 }
 
