@@ -1363,7 +1363,7 @@ calc_returns_metrics <- function(o_buy,
 
 evaluate_strategy <- function(bt_pred,
                               bt_test,
-                              return_method = "absolute") {
+                              return_method = "odds") {
   
   selected_value <- ifelse(
     bt_pred == 1,
