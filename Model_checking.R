@@ -62,7 +62,7 @@ simulate_trending_ou_exact <- function(n,
   for (t in 2:n) {
     
     Q[t] <- a * Q[t - 1] +
-      (1 - a) * mu_t[t] +
+      M_t[t] - a * M_t[t - 1] +
       rnorm(1, 0, sqrt(q_var))
     
     Z[t] <- Q[t] +

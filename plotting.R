@@ -268,7 +268,7 @@ plot_sim_results <- function(Y,
     
     labs(
       x = "Time",
-      y = "Sum Of Probability"
+      y = "Simulated observation Z_t"
     ) +
     
     theme_bw()
