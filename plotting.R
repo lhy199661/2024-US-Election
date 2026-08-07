@@ -3,6 +3,66 @@
 # Plotting functions for 2020 and 2024 results
 # =========================================================
 
+plot_2024_candidate_probabilities <- function(time,
+                                              trump,
+                                              harris,
+                                              linewidth = 0.7) {
+  
+  if (length(time) != length(trump) ||
+      length(time) != length(harris)) {
+    stop("time, trump, and harris must have the same length.")
+  }
+  
+  df <- data.frame(
+    time = rep(time, 2),
+    probability = c(trump, harris),
+    candidate = factor(
+      rep(
+        c("Donald Trump", "Kamala Harris"),
+        each = length(time)
+      ),
+      levels = c("Donald Trump", "Kamala Harris")
+    )
+  )
+  
+  df <- df[
+    is.finite(df$probability) &
+      !is.na(df$time),
+  ]
+  
+  p <- ggplot(
+    df,
+    aes(
+      x = time,
+      y = probability,
+      color = candidate
+    )
+  ) +
+    geom_line(
+      linewidth = linewidth,
+      na.rm = TRUE
+    ) +
+    scale_color_manual(
+      values = c(
+        "Donald Trump" = "red",
+        "Kamala Harris" = "blue"
+      )
+    ) +
+    labs(
+      x = "Date",
+      y = "Implied Probability",
+      color = NULL
+    ) +
+    theme_bw() +
+    theme(
+      legend.position = "top"
+    )
+  
+  print(p)
+  invisible(p)
+}
+
+
 plot_2024_results <- function(Y,
                               monitor_result,
                               filtered,

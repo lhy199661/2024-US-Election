@@ -29,6 +29,12 @@ if (!exists("time_index_2024")) {
   time_index_2024 <- seq_along(Y_2024)
 }
 
+p_candidate_2024 <- plot_2024_candidate_probabilities(
+  time = time_2024,
+  trump = Trump_2024,
+  harris = Harris_2024
+)
+
 print_signal_diagnostics <- function(monitor_result,
                                      label,
                                      n_top = 10) {
