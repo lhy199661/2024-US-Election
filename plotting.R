@@ -3,6 +3,111 @@
 # Plotting functions for 2020 and 2024 results
 # =========================================================
 
+plot_2020_candidate_probabilities <- function(time,
+                                              trump,
+                                              biden,
+                                              covid_insert_after = 11593,
+                                              covid_gap = 1079,
+                                              covid_start_full = 11594,
+                                              covid_end_full = 12672,
+                                              linewidth = 0.7) {
+  
+  insert_covid_gap <- function(x) {
+    if (length(x) == length(time)) {
+      return(x)
+    }
+    
+    if (length(x) + covid_gap == length(time)) {
+      return(
+        append(
+          x,
+          rep(NA_real_, covid_gap),
+          after = covid_insert_after
+        )
+      )
+    }
+    
+    stop(
+      "Candidate probability length is not compatible with time length. ",
+      "It should either equal length(time), or equal length(time) - covid_gap."
+    )
+  }
+  
+  trump_plot <- insert_covid_gap(trump)
+  biden_plot <- insert_covid_gap(biden)
+  
+  df <- data.frame(
+    time = rep(time, 2),
+    probability = c(trump_plot, biden_plot),
+    candidate = factor(
+      rep(
+        c("Donald Trump", "Joe Biden"),
+        each = length(time)
+      ),
+      levels = c("Donald Trump", "Joe Biden")
+    )
+  )
+  
+  df <- df[
+    !is.na(df$time) &
+      is.finite(df$probability),
+  ]
+  
+  p <- ggplot(
+    df,
+    aes(
+      x = time,
+      y = probability,
+      color = candidate
+    )
+  ) +
+    annotate(
+      "rect",
+      xmin = time[covid_start_full],
+      xmax = time[covid_end_full],
+      ymin = -Inf,
+      ymax = Inf,
+      fill = "orange",
+      alpha = 0.08
+    ) +
+    geom_line(
+      linewidth = linewidth,
+      na.rm = TRUE
+    ) +
+    geom_vline(
+      xintercept = time[covid_start_full],
+      color = "orange",
+      linetype = "dashed",
+      linewidth = 0.7
+    ) +
+    geom_vline(
+      xintercept = time[covid_end_full],
+      color = "orange",
+      linetype = "dashed",
+      linewidth = 0.7
+    ) +
+    scale_color_manual(
+      values = c(
+        "Donald Trump" = "red",
+        "Joe Biden" = "blue"
+      )
+    ) +
+    labs(
+      x = "Date",
+      y = "Implied Probability",
+      color = NULL
+    ) +
+    theme_bw() +
+    theme(
+      legend.position = "top"
+    )
+  
+  print(p)
+  invisible(p)
+}
+
+
+
 plot_2024_candidate_probabilities <- function(time,
                                               trump,
                                               harris,
